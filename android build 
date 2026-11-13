@@ -1,0 +1,54 @@
+name: Build Sentinel AI APK
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Extract Android project
+        run: |
+          unzip -q SentinelAI_Android_No_Studio.zip -d android-src
+          PROJECT_DIR="$(find "$GITHUB_WORKSPACE/android-src" -type f \( -name settings.gradle -o -name settings.gradle.kts \) -print -quit | xargs dirname)"
+          if [ -z "$PROJECT_DIR" ]; then
+            echo "Android project not found."
+            exit 1
+          fi
+          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.11.1'
+
+      - name: Align Kotlin JVM target with Java
+        run: |
+          cat > "$GITHUB_WORKSPACE/jvm-target.init.gradle" <<'EOF'
+          allprojects {
+            afterEvaluate {
+              tasks.matching { it.name.toLowerCase().contains("kotlin") && it.hasProperty("kotlinOptions") }.configureEach {
+                kotlinOptions.jvmTarget = "1.8"
+              }
+            }
+          }
+          EOF
+
+      - name: Build APK
+        run: gradle --no-daemon -I "$GITHUB_WORKSPACE/jvm-target.init.gradle" -p "$PROJECT_DIR" assembleDebug
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SentinelAI-debug-apk
+          path: android-src/**/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
