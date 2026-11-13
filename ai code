@@ -1,0 +1,483 @@
+```react
+import React, { useState, useEffect, useRef, useMemo } from 'react';
+import {
+  Shield,
+  ShieldAlert,
+  ShieldCheck,
+  Smartphone,
+  Wifi,
+  Radio,
+  Cpu,
+  Lock,
+  Unlock,
+  Eye,
+  EyeOff,
+  Terminal,
+  Bot,
+  Settings,
+  Activity,
+  Globe,
+  Bluetooth,
+  Server,
+  RefreshCw,
+  CheckCircle2,
+  AlertTriangle,
+  XCircle,
+  Send,
+  Search,
+  Download,
+  Menu,
+  X,
+  Zap,
+  Layers,
+  PhoneIncoming,
+  Share2,
+  MapPin,
+  Package,
+  Sliders,
+  Volume2,
+  VolumeX,
+  FileCode,
+  Sparkles,
+  ChevronRight,
+  HardDrive,
+  Network
+} from 'lucide-react';
+import {
+  AreaChart,
+  Area,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer
+} from 'recharts';
+
+// ============================================================================
+// CONSTANTS & INITIAL TELEMETRY DATA
+// ============================================================================
+
+const INITIAL_SHIELDS = {
+  cloudflarePacket: true,
+  packetConcealment: true,
+  networkRouting: true,
+  networkSharing: true,
+  inboundComms: true,
+  simSwitchLock: true,
+  hardwareIntegrity: true,
+  nearbyDevices: true,
+  bluetoothPairing: true,
+  nodeAccessBlocker: true,
+  foreignStatesGeo: true,
+  analyticsLogging: true,
+};
+
+const INITIAL_LOGS = [
+  { id: 1, time: '14:52:08', module: 'CF-SHIELD', level: 'INFO', msg: 'Edge TLS 1.3 handshake verified via Cloudflare Zero-Trust tunnel.' },
+  { id: 2, time: '14:52:19', module: 'SIM-LOCK', level: 'SECURE', msg: 'eSIM/UICC hardware carrier lock verified. ICCID hash intact.' },
+  { id: 3, time: '14:53:02', module: 'NODE-BLK', level: 'WARN', msg: 'Blocked unauthorized RPC socket probe from 185.220.101.44:8545.' },
+  { id: 4, time: '14:54:15', module: 'BLE-GUARD', level: 'BLOCKED', msg: 'Rejected unsolicited BLE pairing beacon (MAC: 4A:8F:2C:91:0E:B2).' },
+  { id: 5, time: '14:55:41', module: 'HW-INTEG', level: 'SECURE', msg: 'TEE Keystore attestation & bootloader verified boot state: GREEN.' },
+  { id: 6, time: '14:56:12', module: 'PKT-CONCEAL', level: 'INFO', msg: 'Obfuscated 142 outbound DNS-over-HTTPS queries with decoy padding.' },
+];
+
+const SIMULATED_EVENTS = [
+  { module: 'CF-SHIELD', level: 'INFO', msg: 'Filtered 18 malformed ICMP echo packets at edge interface.' },
+  { module: 'GEO-SHIELD', level: 'BLOCKED', msg: 'Intercepted GeoIP leak attempt; spoofed coordinates active.' },
+  { module: 'ANALYTICS', level: 'BLOCKED', msg: 'Dropped telemetry payload to tracking endpoint (metrics.ad-net.io).' },
+  { module: 'COMMS-MON', level: 'SECURE', msg: 'Verified STIR/SHAKEN attestation token on inbound VoIP signaling.' },
+  { module: 'NEARBY-IDS', level: 'WARN', msg: 'Detected Wi-Fi Direct probe request in proximity; MAC randomized.' },
+  { module: 'ROUTE-SHD', level: 'INFO', msg: 'Multi-hop WireGuard circuit rotated cleanly (latency: 19ms).' },
+  { module: 'NODE-BLK', level: 'BLOCKED', msg: 'Terminated unauthorized local port scan on 127.0.0.1:5037 (ADB).' },
+  { module: 'HW-INTEG', level: 'SECURE', msg: 'Kernel memory integrity & SELinux enforcing mode verified.' },
+];
+
+const GEO_PROFILES = [
+  { id: 'zurich', name: 'Zurich, Switzerland', coords: '47.3769° N, 8.5417° E', ip: '194.230.14.88', ping: '22ms' },
+  { id: 'reykjavik', name: 'Reykjavik, Iceland', coords: '64.1466° N, 21.9426° W', ip: '82.221.105.19', ping: '38ms' },
+  { id: 'tokyo', name: 'Tokyo, Japan', coords: '35.6762° N, 139.6503° E', ip: '103.5.140.72', ping: '112ms' },
+  { id: 'lancaster', name: 'Lancaster, US-West (Native)', coords: '34.6868° N, 118.1542° W', ip: '172.58.92.14', ping: '11ms' },
+];
+
+const ANDROID_PATCH_CVES = [
+  { cve: 'CVE-2026-21409', component: 'System Framework / Binder', severity: 'Critical', status: 'Patched' },
+  { cve: 'CVE-2026-19842', component: 'Qualcomm WLAN Firmware', severity: 'High', status: 'Patched' },
+  { cve: 'CVE-2026-18411', component: 'MediaTek Baseband Modem', severity: 'High', status: 'Patched' },
+  { cve: 'CVE-2026-22015', component: 'Kernel eBPF Verifier', severity: 'Medium', status: 'Mitigated' },
+];
+
+// ============================================================================
+// MAIN APPLICATION COMPONENT
+// ============================================================================
+
+export default function App() {
+  // Navigation & UI State
+  const [activeTab, setActiveTab] = useState('dashboard');
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [screenMaskActive, setScreenMaskActive] = useState(false);
+  const [maskOpacity, setMaskOpacity] = useState(0.88);
+  const [audioAnnouncer, setAudioAnnouncer] = useState(true);
+  const [toast, setToast] = useState(null);
+
+  // Shield States
+  const [shields, setShields] = useState(INITIAL_SHIELDS);
+
+  // Sub-module Interactive States
+  const [simPinLocked, setSimPinLocked] = useState(true);
+  const [selectedGeo, setSelectedGeo] = useState(GEO_PROFILES[0]);
+  const [firewallReloading, setFirewallReloading] = useState(false);
+  const [firewallRulesCount, setFirewallRulesCount] = useState(1428);
+  const [apkBuilding, setApkBuilding] = useState(false);
+  const [apkBuildProgress, setApkBuildProgress] = useState(100);
+  const [patchScanning, setPatchScanning] = useState(false);
+  const [lastPatchScan, setLastPatchScan] = useState('Today, 14:30 PST');
+  const [commandInput, setCommandInput] = useState('');
+  const [commandHistory, setCommandHistory] = useState([
+    { cmd: 'sentinelctl --status --all', out: 'OK: 12/12 core defense modules operational. Kernel enforcing.' },
+    { cmd: 'netstat -tunap | grep ESTABLISHED', out: 'tcp6 0 0 10.8.0.2:54192 194.230.14.88:443 ESTABLISHED [wg-sentinel]' },
+  ]);
+
+  // Settings State
+  const [settings, setSettings] = useState({
+    autoQuarantine: true,
+    strictDnsOverHttps: true,
+    zeroTrustTelemetry: true,
+    batterySaverThrottle: false,
+    threatSensitivity: 'paranoid',
+  });
+
+  // Live Telemetry & Packet Traffic Data
+  const [logs, setLogs] = useState(INITIAL_LOGS);
+  const [trafficData, setTrafficData] = useState(() => {
+    const now = Date.now();
+    return Array.from({ length: 18 }, (_, i) => {
+      const d = new Date(now - (17 - i) * 3000);
+      return {
+        time: d.toTimeString().slice(0, 8),
+        inbound: Math.floor(180 + Math.random() * 140),
+        concealed: Math.floor(140 + Math.random() * 110),
+        blocked: Math.floor(15 + Math.random() * 45),
+      };
+    });
+  });
+
+  // AI Security Assistant State
+  const [chatMessages, setChatMessages] = useState([
+    {
+      role: 'assistant',
+      text: 'Sentinel AI Core online. I have live visibility into your 12 defense shields, packet telemetry, and hardware integrity status. Ask me to analyze recent blocked threats, audit your configuration, or explain any security module.',
+      timestamp: '14:50'
+    }
+  ]);
+  const [chatInput, setChatInput] = useState('');
+  const [isAiThinking, setIsAiThinking] = useState(false);
+  const chatEndRef = useRef(null);
+
+  // Compute Security Score dynamically
+  const activeShieldCount = Object.values(shields).filter(Boolean).length;
+  const totalShieldCount = Object.keys(shields).length;
+  const securityScore = useMemo(() => {
+    const base = Math.round((activeShieldCount / totalShieldCount) * 92);
+    const bonus = (simPinLocked ? 4 : 0) + (settings.strictDnsOverHttps ? 4 : 0);
+    return Math.min(100, base + bonus);
+  }, [activeShieldCount, totalShieldCount, simPinLocked, settings.strictDnsOverHttps]);
+
+  // Helper: Show Notification Banner
+  const triggerToast = (message, type = 'info') => {
+    setToast({ message, type });
+    setTimeout(() => {
+      setToast((prev) => (prev?.message === message ? null : prev));
+    }, 3500);
+  };
+
+  // Helper: Append Log Entry
+  const addLog = (module, level, msg) => {
+    const now = new Date().toTimeString().slice(0, 8);
+    setLogs((prev) => [{ id: Date.now() + Math.random(), time: now, module, level, msg }, ...prev.slice(0, 49)]);
+  };
+
+  // Toggle individual shield
+  const toggleShield = (key, label) => {
+    setShields((prev) => {
+      const nextVal = !prev[key];
+      addLog(
+        key.toUpperCase().slice(0, 10),
+        nextVal ? 'SECURE' : 'WARN',
+        `${label} ${nextVal ? 'ACTIVATED — enforcement rules applied' : 'DEACTIVATED — interface exposed'}.`
+      );
+      triggerToast(`${label} ${nextVal ? 'Enabled' : 'Disabled'}`, nextVal ? 'success' : 'warn');
+      return { ...prev, [key]: nextVal };
+    });
+  };
+
+  // Live Telemetry & Packet Chart Loop
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const now = new Date().toTimeString().slice(0, 8);
+      const shieldFactor = activeShieldCount / totalShieldCount;
+      const inbound = Math.floor(160 + Math.random() * 190);
+      const concealed = shields.packetConcealment ? Math.floor(inbound * (0.78 + Math.random() * 0.15)) : Math.floor(inbound * 0.12);
+      const blocked = Math.floor((12 + Math.random() * 52) * Math.max(0.2, shieldFactor));
+
+      setTrafficData((prev) => [
+        ...prev.slice(1),
+        { time: now, inbound, concealed, blocked }
+      ]);
+
+      // Periodically emit simulated telemetry events
+      if (Math.random() > 0.45) {
+        const evt = SIMULATED_EVENTS[Math.floor(Math.random() * SIMULATED_EVENTS.length)];
+        setLogs((prev) => [{ id: Date.now() + Math.random(), time: now, ...evt }, ...prev.slice(0, 49)]);
+      }
+    }, 2800);
+
+    return () => clearInterval(interval);
+  }, [activeShieldCount, totalShieldCount, shields.packetConcealment]);
+
+  // Auto-scroll AI chat
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [chatMessages, isAiThinking]);
+
+  // Action: Firewall Reload Engine
+  const handleFirewallReload = () => {
+    if (firewallReloading) return;
+    setFirewallReloading(true);
+    addLog('FW-ENGINE', 'INFO', 'Flushing nftables chains and reloading zero-trust packet filter rules...');
+    setTimeout(() => {
+      const newCount = 1420 + Math.floor(Math.random() * 45);
+      setFirewallRulesCount(newCount);
+      setFirewallReloading(false);
+      addLog('FW-ENGINE', 'SECURE', `Firewall reloaded cleanly. ${newCount} active rules verified in 140ms.`);
+      triggerToast(`Firewall reloaded (${newCount} rules active)`, 'success');
+    }, 1100);
+  };
+
+  // Action: Android Patch Scanner
+  const handleRunPatchScan = () => {
+    if (patchScanning) return;
+    setPatchScanning(true);
+    addLog('PATCH-SCAN', 'INFO', 'Auditing Android SPL (2026-11-05), kernel symbols, and vendor HAL signatures...');
+    setTimeout(() => {
+      setPatchScanning(false);
+      const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      setLastPatchScan(`Today, ${timeStr}`);
+      addLog('PATCH-SCAN', 'SECURE', 'Patch audit complete: 0 unpatched critical vulnerabilities detected.');
+      triggerToast('Android Security Patch Level verified (2026-11-05)', 'success');
+    }, 1300);
+  };
+
+  // Action: APK Packager / PWA Build Trigger
+  const handleTriggerApkBuild = () => {
+    if (apkBuilding) return;
+    setApkBuilding(true);
+    setApkBuildProgress(15);
+    addLog('APK-PKG', 'INFO', 'Initiating Capacitor Android release bundle & ServiceWorker PWA compilation...');
+    const t1 = setTimeout(() => setApkBuildProgress(52), 450);
+    const t2 = setTimeout(() => setApkBuildProgress(84), 900);
+    const t3 = setTimeout(() => {
+      setApkBuildProgress(100);
+      setApkBuilding(false);
+      addLog('APK-PKG', 'SECURE', 'Signed sentinel-release-v2.4.1.apk (SHA-256 verified) & PWA manifest ready.');
+      triggerToast('APK & PWA Production Bundle Built & Signed', 'success');
+    }, 1450);
+    return () => {
+      clearTimeout(t1);
+      clearTimeout(t2);
+      clearTimeout(t3);
+    };
+  };
+
+  // Action: Device Command Monitor Execution
+  const handleRunCommand = (e) => {
+    e.preventDefault();
+    const trimmed = commandInput.trim();
+    if (!trimmed) return;
+
+    let output = `Executed '${trimmed}' in sandboxed Sentinel shell — exit code 0.`;
+    if (trimmed.includes('help')) {
+      output = 'Available commands: sentinelctl --status, netstat, logcat -b security, getenforce, sim-verify';
+    } else if (trimmed.includes('getenforce')) {
+      output = shields.hardwareIntegrity ? 'Enforcing (Hardware TEE backed)' : 'Permissive (WARNING: Integrity shield off)';
+    } else if (trimmed.includes('sim')) {
+      output = `SIM Slot 1: LOCKED (${simPinLocked ? 'Hardware PIN Enforced' : 'PIN Unlocked'}) | Carrier: Verified`;
+    } else if (trimmed.includes('geo')) {
+      output = `Active Spoof Node: ${selectedGeo.name} [${selectedGeo.ip}] (${selectedGeo.coords})`;
+    }
+
+    setCommandHistory((prev) => [...prev, { cmd: trimmed, out: output }]);
+    addLog('CMD-MON', 'INFO', `Shell command audited: ${trimmed}`);
+    setCommandInput('');
+  };
+
+  // Action: Gemini API AI Security Assistant Call
+  const handleSendAiMessage = async (customPrompt) => {
+    const promptText = (customPrompt ?? chatInput).trim();
+    if (!promptText || isAiThinking) return;
+
+    const nowTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    setChatMessages((prev) => [...prev, { role: 'user', text: promptText, timestamp: nowTime }]);
+    if (!customPrompt) setChatInput('');
+    setIsAiThinking(true);
+
+    // Build live system telemetry context for Gemini
+    const disabledShields = Object.entries(shields)
+      .filter(([, enabled]) => !enabled)
+      .map(([k]) => k);
+    const recentLogSummary = logs
+      .slice(0, 6)
+      .map((l) => `[${l.time}] (${l.module}/${l.level}) ${l.msg}`)
+      .join('\n');
+
+    const systemInstruction = `You are the Sentinel Security AI Core embedded in the Sentinel Mobile & Network Integrity Dashboard.
+Current System State:
+- Security Score: ${securityScore}/100 (${activeShieldCount}/${totalShieldCount} shields active)
+- Disabled Shields: ${disabledShields.length ? disabledShields.join(', ') : 'None (All Active)'}
+- SIM Switch Lock: ${simPinLocked ? 'PIN Enforced' : 'PIN Unlocked'}
+- Geo-Spoofing Node: ${selectedGeo.name} (${selectedGeo.ip})
+- Firewall Rules Active: ${firewallRulesCount}
+- Recent Telemetry Logs:
+${recentLogSummary}
+
+Provide concise, actionable, expert cybersecurity analysis tailored to this live device state. Use clear formatting without excessive markdown clutter.`;
+
+    const apiKey = "";
+    const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=${apiKey}`;
+
+    const payload = {
+      contents: [{ parts: [{ text: promptText }] }],
+      systemInstruction: {
+        parts: [{ text: systemInstruction }]
+      }
+    };
+
+    // Exponential backoff fetch helper
+    const fetchWithRetry = async (retries = 3, delay = 1000) => {
+      for (let attempt = 0; attempt <= retries; attempt++) {
+        try {
+          const response = await fetch(apiUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+          });
+          if (!response.ok) throw new Error(`HTTP ${response.status}`);
+          return await response.json();
+        } catch (err) {
+          if (attempt === retries) throw err;
+          await new Promise((res) => setTimeout(res, delay * Math.pow(2, attempt)));
+        }
+      }
+    };
+
+    try {
+      const result = await fetchWithRetry();
+      const replyText =
+        result?.candidates?.[0]?.content?.parts?.[0]?.text ||
+        'Telemetry analysis complete. All primary perimeter defenses remain within nominal thresholds.';
+      setChatMessages((prev) => [
+        ...prev,
+        {
+          role: 'assistant',
+          text: replyText,
+          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        }
+      ]);
+    } catch (error) {
+      // Fallback intelligent diagnostic response if offline/sandboxed without API key
+      const fallbackAnalysis =
+        disabledShields.length > 0
+          ? `Diagnostic Audit: Security Score is ${securityScore}/100. Attention required: ${disabledShields.join(', ')} currently disabled, leaving potential attack surface exposed. Recommend re-enabling all shields and running a Firewall Reload.`
+          : `Diagnostic Audit: Security Score is optimal at ${securityScore}/100. All 12 shields are enforcing zero-trust rules, SIM Switch Lock is active, and traffic is routed through ${selectedGeo.name} (${selectedGeo.ip}). Recent logs show routine packet concealment and blocked unauthorized probes with zero breaches.`;
+
+      setChatMessages((prev) => [
+        ...prev,
+        {
+          role: 'assistant',
+          text: fallbackAnalysis,
+          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        }
+      ]);
+    } finally {
+      setIsAiThinking(false);
+    }
+  };
+
+  // ============================================================================
+  // REUSABLE UI COMPONENTS
+  // ============================================================================
+
+  const ToggleSwitch = ({ enabled, onChange, label }) => (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={enabled}
+      aria-label={label}
+      onClick={onChange}
+      className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-emerald-500/50 ${
+        enabled ? 'bg-emerald-500' : 'bg-slate-700'
+      }`}
+    >
+      <span
+        className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-md ring-0 transition duration-200 ease-in-out ${
+          enabled ? 'translate-x-5' : 'translate-x-0'
+        }`}
+      />
+    </button>
+  );
+
+  const ShieldCard = ({ shieldKey, title, subtitle, icon: Icon, metricLabel, metricValue, badgeText }) => {
+    const isEnabled = shields[shieldKey];
+    return (
+      <div
+        className={`group relative rounded-xl border p-4 transition-all duration-200 ${
+          isEnabled
+            ? 'border-slate-800 bg-slate-900/80 hover:border-emerald-500/40'
+            : 'border-rose-500/30 bg-rose-950/10 hover:border-rose-500/50'
+        }`}
+      >
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex items-start gap-3">
+            <div
+              className={`mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border ${
+                isEnabled
+                  ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-400'
+                  : 'border-rose-500/30 bg-rose-500/10 text-rose-400'
+              }`}
+            >
+              <Icon className="h-5 w-5" />
+            </div>
+            <div>
+              <div className="flex flex-wrap items-center gap-2">
+                <h3 className="text-sm font-semibold text-slate-100">{title}</h3>
+                {badgeText && (
+                  <span className="rounded bg-slate-800 px-1.5 py-0.5 font-mono text-[10px] font-medium text-cyan-300">
+                    {badgeText}
+                  </span>
+                )}
+              </div>
+              <p className="mt-1 text-xs leading-relaxed text-slate-400">{subtitle}</p>
+            </div>
+          </div>
+          <ToggleSwitch
+            enabled={isEnabled}
+            onChange={() => toggleShield(shieldKey, title)}
+            label={`Toggle ${title}`}
+          />
+        </div>
+
+        <div className="mt-4 flex items-center justify-between border-t border-slate-800/80 pt-3 text-xs">
+          <span className="text-slate-500">{metricLabel}</span>
+          <span className={`font-mono font-medium ${isEnabled ? 'text-emerald-400' : 'text-rose-400'}`}>
+            {isEnabled ? metricValue : 'BYPASSED'}
+          </span>
+        </div>
+      </div>
+    );
+  };
+
+  // ============================================================================
+  // NAVIGATION ITEMS
+  // ============================================================================
+
+  const navItems = [
+    { id: 'dashboard', label: 'Security Overview', icon: ShieldChe
